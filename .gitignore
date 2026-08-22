@@ -1,0 +1,15 @@
+# build artifacts
+__pycache__/
+*.pyc
+.sconsign.dblite
+.SConscript.dblite
+*.o
+*.d
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store

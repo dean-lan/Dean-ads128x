@@ -1,0 +1,70 @@
+# RT-Thread software package config file for ads128x
+menuconfig PKG_USING_ADS128X
+    bool "ads128x: TI ADS128x ultra-high-resolution delta-sigma ADC driver"
+    default n
+    select RT_USING_SPI
+    help
+        Driver for TI ADS128x family ultra-high-resolution delta-sigma ADC
+        (ADS1281 / ADS1282 / ADS1283 / ADS1284), SPI interface.
+
+if PKG_USING_ADS128X
+
+    config ADS128X_USING_ADC_DEVICE
+        bool "Register as an RT-Thread ADC device"
+        default y
+        select RT_USING_ADC
+        help
+            Wrap the bare driver as an RT-Thread ADC device named "adc_ads128x".
+
+    choice
+        prompt "chip model"
+        default ADS128X_USING_ADS1282
+
+        config ADS128X_USING_ADS1281
+            bool "ADS1281 (31-bit, single channel)"
+
+        config ADS128X_USING_ADS1282
+            bool "ADS1282 (31-bit)"
+
+        config ADS128X_USING_ADS1283
+            bool "ADS1283 (31-bit, low power)"
+
+        config ADS128X_USING_ADS1284
+            bool "ADS1284 (31-bit, dual power mode)"
+    endchoice
+
+    config ADS128X_SPI_BUS_NAME
+        string "SPI bus name"
+        default "spi1"
+        help
+            The SPI bus that the ADS128x device attached to.
+
+    config ADS128X_SPI_MAX_HZ
+        int "SPI clock frequency (Hz)"
+        default 10000000
+        help
+            SPI clock frequency, up to 20MHz per datasheet, 10MHz recommended.
+
+    config ADS128X_CS_PIN
+        int "Chip select pin number"
+        default -1
+
+    config ADS128X_DRDY_PIN
+        int "Data ready (DRDY) pin number"
+        default -1
+
+    config ADS128X_RESET_PIN
+        int "Reset pin number (hardware reset)"
+        default -1
+
+    config ADS128X_DRDY_TIMEOUT
+        int "DRDY wait timeout (ms)"
+        default 100
+
+    config ADS128X_SAMPLE
+        bool "Enable sample command"
+        default n
+        help
+            Enable ads128x_sample msh command.
+
+endif

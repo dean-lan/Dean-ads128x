@@ -1,0 +1,20 @@
+from building import *
+
+cwd = GetCurrentDir()
+src = []
+path = [cwd]
+
+if GetDepend(['PKG_USING_ADS128X']):
+    # bare driver core (always)
+    src += Glob('src/ads128x_core.c')
+    path += [cwd + '/include', cwd + '/src']
+    # optional RT-Thread ADC device wrapper
+    if GetDepend(['ADS128X_USING_ADC_DEVICE']):
+        src += Glob('src/ads128x_adc.c')
+    # sample
+    if GetDepend(['ADS128X_SAMPLE']):
+        src += Glob('examples/*.c')
+
+group = DefineGroup('ADS128X', src, depend=['PKG_USING_ADS128X'], CPPPATH=path)
+
+Return('group')
