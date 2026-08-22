@@ -11,6 +11,10 @@
 #include <rtdbg.h>
 #include "ads128x_internal.h"
 
+/* Ownership check: configuration/control APIs are rejected while an aggregator
+ * (DeanAcq) owns the device. Data reads remain allowed. */
+#define ADS128X_CHECK_OWNED(dev)  do { if ((dev)->owner != RT_NULL) return -RT_EBUSY; } while (0)
+
 /* Driver device instances (declared extern in ads128x_internal.h). Instance 0
  * keeps the legacy single-device behaviour. */
 struct ads128x_device ads128x_dev[ADS128X_MAX_DEVICES];
@@ -79,6 +83,7 @@ rt_err_t ads128x_write_reg(struct ads128x_device *dev, rt_uint8_t reg, rt_uint8_
     rt_uint8_t buf[3];
     rt_err_t ret;
 
+    ADS128X_CHECK_OWNED(dev);
     if (dev->rdatac_mode)
     {
         /* RREG/WREG are not allowed in read-data-continuous mode, exit it first */
@@ -105,6 +110,7 @@ rt_err_t ads128x_read_reg(struct ads128x_device *dev, rt_uint8_t reg, rt_uint8_t
     rt_uint8_t rx[3] = { 0, 0, 0 };
     rt_err_t ret;
 
+    ADS128X_CHECK_OWNED(dev);
     if (dev->rdatac_mode)
     {
         /* RREG requires exiting read-data-continuous mode first */
@@ -224,6 +230,7 @@ rt_err_t ads128x_start_continuous(struct ads128x_device *dev)
 {
     rt_err_t ret;
 
+    ADS128X_CHECK_OWNED(dev);
     if (dev->rdatac_mode)
     {
         return RT_EOK;
@@ -242,6 +249,7 @@ rt_err_t ads128x_stop_continuous(struct ads128x_device *dev)
 {
     rt_err_t ret;
 
+    ADS128X_CHECK_OWNED(dev);
     if (!dev->rdatac_mode)
     {
         return RT_EOK;
@@ -374,6 +382,7 @@ rt_err_t ads128x_reset(struct ads128x_device *dev)
 {
     rt_err_t ret = RT_EOK;
 
+    ADS128X_CHECK_OWNED(dev);
     if (dev->reset_pin >= 0)
     {
         /* Hardware reset: pull RESET low for at least one fCLK period */
@@ -402,12 +411,16 @@ rt_err_t ads128x_reset(struct ads128x_device *dev)
 
 rt_err_t ads128x_standby(struct ads128x_device *dev)
 {
+    ADS128X_CHECK_OWNED(dev);
     return ads128x_cmd(dev, ADS128X_CMD_STANDBY);
 }
 
 rt_err_t ads128x_wakeup(struct ads128x_device *dev)
 {
-    rt_err_t ret = ads128x_cmd(dev, ADS128X_CMD_WAKEUP);
+    rt_err_t ret;
+
+    ADS128X_CHECK_OWNED(dev);
+    ret = ads128x_cmd(dev, ADS128X_CMD_WAKEUP);
 
     if (ret == RT_EOK)
     {
@@ -420,6 +433,7 @@ rt_err_t ads128x_wakeup(struct ads128x_device *dev)
 /* Issue the SYNC command: resets the digital filter and modulator to align conversions */
 rt_err_t ads128x_sync(struct ads128x_device *dev)
 {
+    ADS128X_CHECK_OWNED(dev);
     return ads128x_cmd(dev, ADS128X_CMD_SYNC);
 }
 
@@ -427,6 +441,7 @@ rt_err_t ads128x_sync(struct ads128x_device *dev)
  * with a single pulse). Idle high; a low pulse synchronizes conversions. */
 rt_err_t ads128x_set_sync_pin(ads128x_device_t dev, rt_base_t sync_pin)
 {
+    ADS128X_CHECK_OWNED(dev);
     if (dev == RT_NULL)
     {
         return -RT_EINVAL;
@@ -444,6 +459,7 @@ rt_err_t ads128x_set_sync_pin(ads128x_device_t dev, rt_base_t sync_pin)
  * falls back to the SYNC command when no pin has been configured. */
 rt_err_t ads128x_sync_hw(ads128x_device_t dev)
 {
+    ADS128X_CHECK_OWNED(dev);
     if (dev == RT_NULL)
     {
         return -RT_EINVAL;
@@ -462,6 +478,7 @@ rt_err_t ads128x_sync_hw(ads128x_device_t dev)
 /* Synchronization mode (CONFIG0 SYNC bit): 0 = pulse sync (default), 1 = continuous sync */
 rt_err_t ads128x_set_sync_mode(struct ads128x_device *dev, rt_bool_t continuous)
 {
+    ADS128X_CHECK_OWNED(dev);
     if (continuous)
     {
         dev->config0 = (rt_uint8_t)(dev->config0 | ADS128X_CFG0_SYNC);
@@ -478,6 +495,7 @@ rt_err_t ads128x_set_sync_mode(struct ads128x_device *dev, rt_bool_t continuous)
  * case power_down/power_up fall back to the STANDBY/WAKEUP commands. */
 rt_err_t ads128x_set_pwdn_pin(struct ads128x_device *dev, rt_base_t pwdn_pin)
 {
+    ADS128X_CHECK_OWNED(dev);
     dev->pwdn_pin = pwdn_pin;
     if (pwdn_pin >= 0)
     {
@@ -488,6 +506,7 @@ rt_err_t ads128x_set_pwdn_pin(struct ads128x_device *dev, rt_base_t pwdn_pin)
 
 rt_err_t ads128x_power_down(struct ads128x_device *dev)
 {
+    ADS128X_CHECK_OWNED(dev);
     if (dev->pwdn_pin >= 0)
     {
         rt_pin_write(dev->pwdn_pin, PIN_HIGH);
@@ -501,6 +520,7 @@ rt_err_t ads128x_power_up(struct ads128x_device *dev)
     rt_uint8_t config0, config1;
     rt_err_t ret;
 
+    ADS128X_CHECK_OWNED(dev);
     if (dev->pwdn_pin >= 0)
     {
         rt_pin_write(dev->pwdn_pin, PIN_LOW);
@@ -529,11 +549,13 @@ rt_err_t ads128x_power_up(struct ads128x_device *dev)
 
 rt_err_t ads128x_offset_cal(struct ads128x_device *dev)
 {
+    ADS128X_CHECK_OWNED(dev);
     return ads128x_cmd(dev, ADS128X_CMD_OFSCAL);
 }
 
 rt_err_t ads128x_gain_cal(struct ads128x_device *dev)
 {
+    ADS128X_CHECK_OWNED(dev);
     return ads128x_cmd(dev, ADS128X_CMD_GANCAL);
 }
 
@@ -582,6 +604,39 @@ ads128x_device_t ads128x_get(rt_uint8_t idx)
         return RT_NULL;
     }
     return &ads128x_dev[idx];
+}
+
+/* Ownership transfer (RT_ACQ_CTRL_ATTACH / DETACH backend). */
+rt_err_t ads128x_attach(ads128x_device_t dev, void *owner)
+{
+    if (dev == RT_NULL || owner == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+    if (dev->owner != RT_NULL)
+    {
+        return -RT_EBUSY;           /* already owned */
+    }
+    dev->owner = owner;
+    return RT_EOK;
+}
+
+rt_err_t ads128x_detach(ads128x_device_t dev, void *owner)
+{
+    if (dev == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+    if (dev->owner == RT_NULL)
+    {
+        return -RT_ERROR;           /* not owned */
+    }
+    if (dev->owner != owner)
+    {
+        return -RT_EBUSY;           /* only the owner may detach */
+    }
+    dev->owner = RT_NULL;
+    return RT_EOK;
 }
 
 /* Legacy single-device init: initializes instance 0 */

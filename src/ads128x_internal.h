@@ -24,6 +24,7 @@
 #include <rtdevice.h>
 #include <drivers/dev_spi.h>
 #include <drivers/adc.h>
+#include "acq_device.h"
 
 /* SPI slave device name (internal, used for bus attachment) */
 #define ADS128X_SPI_DEV_NAME    "ads128x"
@@ -91,6 +92,7 @@ struct ads128x_chip_info
 struct ads128x_device
 {
     struct rt_adc_device adc;               /* RT-Thread ADC device (used by the wrapper) */
+    struct rt_acq_device acq;               /* standard acquisition-device class (acqN) */
     struct rt_spi_device spi_dev;           /* SPI slave device */
     const struct ads128x_chip_info *chip;   /* Chip parameters */
     rt_uint8_t config0;                     /* Cached CONFIG0 value */
@@ -101,6 +103,7 @@ struct ads128x_device
     rt_base_t sync_pin;                     /* Hardware SYNC pin (optional, -1 if unused) */
     struct rt_semaphore drdy_sem;           /* Data-ready semaphore */
     rt_bool_t rdatac_mode;                  /* In read-data-continuous mode */
+    void *owner;                            /* Aggregator owning this device (NULL = free) */
 };
 
 /* Maximum number of simultaneous devices (multi-chip acquisition). Set by

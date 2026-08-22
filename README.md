@@ -1,13 +1,30 @@
-# ADS128X
+# DEANACQ-DEV
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C-blue.svg)]()
 [![Platform](https://img.shields.io/badge/platform-RT--Thread-orange.svg)](https://www.rt-thread.org/)
-[![DeanDAQ](https://img.shields.io/badge/deandaq-companion-green.svg)](https://github.com/dean-lan/DeanDAQ)
+[![DeanDAQ](https://img.shields.io/badge/deandaq-adapter-green.svg)](https://github.com/dean-lan/DeanDAQ)
 
 ## 1. Introduction
 
-**ads128x** is an RT-Thread software package that provides an SPI driver for the TI ADS128x family of ultra-high-resolution delta-sigma analog-to-digital converters. It is a companion driver of the [DeanDAQ](https://github.com/dean-lan/DeanDAQ) data-acquisition framework: continuous samples can be published into DeanDAQ topics with zero-copy delivery.
+**DeanAcq-dev** (upgraded from `Dean-ads128x`) is an RT-Thread software package
+that provides a **shared acquisition-device class** plus its first chip
+implementation. It hosts:
+
+- `acq_device.h` / `acq_device.c` — a public device class (like the `sensor`
+  framework): a `struct rt_acq_device` embedded in every chip driver, a
+  `struct rt_acq_ops` per chip, and shared registration/lookup/command-dispatch
+  code so every chip (ADS128x today, ADXL/IMUs and other ADCs on SPI or I2C
+  later) reuses the same `rt_device` layer.
+- `ads128x` — the first implementation: a bare SPI driver plus the
+  acquisition-class binding (`ads128x_acqdev_register()`), the RT-Thread ADC
+  device wrapper and the multi-chip acquisition front-end.
+
+Chips register as standard devices named `acq0`, `acq1`, ... and are driven
+uniformly through `rt_device_find/open/control/read` with the `RT_ACQ_CTRL_*`
+commands (rate, channel, gain, filter, start, stop, sync, reset, ownership,
+info). Aggregators such as [DeanAcq](https://github.com/dean-lan/DeanAcq) only
+see this uniform interface — they never special-case a concrete chip.
 
 Supported chip models (one code base, chip selected at compile time):
 
@@ -67,6 +84,7 @@ RT-Thread online packages
     peripheral libraries and drivers  --->
         [*] ads128x: TI ADS128x ultra-high-resolution delta-sigma ADC driver
             [*] Register as an RT-Thread ADC device
+            [*] Register as a standard acquisition device (acqN, unified class)
             chip model (ADS1282 (31-bit))  --->
             Number of ADS128x devices (multi-chip support) (1)  --->
             [ ] Enable the DeanDAQ acquisition module (multi-chip batch publish)
@@ -117,7 +135,43 @@ ads128x_adc_register();
 ads128x_device_t dev = ads128x_find();
 ```
 
-### 4.3 Reading Data (polling)
+### 3.3 Standard Acquisition Device (acqN)
+
+With `ADS128X_USING_ACQDEV` enabled, every instance is registered through the
+shared acquisition-device class and driven uniformly via standard rt_device
+interfaces (the same code works for any chip implementing the class):
+
+```c
+ads128x_acqdev_register(0);
+ads128x_acqdev_register(1);
+
+rt_device_t d = rt_device_find("acq0");
+rt_device_open(d, RT_DEVICE_OFLAG_RDONLY);
+
+rt_uint32_t hz = 1000;
+rt_device_control(d, RT_ACQ_CTRL_SET_RATE, &hz);   /* uniform commands */
+rt_device_control(d, RT_ACQ_CTRL_START, RT_NULL);
+
+struct rt_acq_info info;
+rt_device_control(d, RT_ACQ_CTRL_GET_INFO, &info);  /* model / channels / flags */
+
+struct rt_acq_frame frame;
+rt_device_read(d, 0, &frame, sizeof(frame));        /* one conversion */
+
+/* Ownership: hand the device to an aggregator (e.g. DeanAcq). While owned,
+ * every control command from other callers returns -RT_EBUSY; reads stay allowed. */
+void *owner = ...;
+rt_device_control(d, RT_ACQ_CTRL_ATTACH, owner);
+...
+rt_device_control(d, RT_ACQ_CTRL_DETACH, RT_NULL);
+```
+
+Capability flags (`info.flags`, `RT_ACQ_FLAG_*`) tell the aggregator which
+operations a chip truly supports (SYNC/RESET/POWER/GAIN/FILTER/STREAM). Chips
+that lack a hardware feature either emulate it in software inside their ops or
+leave the op NULL (the framework returns `-RT_ENOSYS`).
+
+### 3.4 Reading Data (polling)
 
 ```c
 ads128x_set_data_rate(dev, 1000);       /* 250/500/1000/2000/4000 SPS */
@@ -224,14 +278,17 @@ rt_adc_read(adc, 0);
 ### 4.7 File Layout
 
 ```
-Dean-ads128x/
+DeanAcq-dev/
 ├── include/
-│   └── ads128x.h           # Public API: bare driver + device wrapper (the only header to include)
+│   ├── acq_device.h      # Public acquisition-device class (rt_acq_device + ops + commands)
+│   └── ads128x.h         # ADS128x public API (bare driver + wrappers)
 ├── src/
+│   ├── acq_device.c      # Shared class: register/find/read/control dispatch + ownership
 │   ├── ads128x_internal.h  # Internal: device struct, register/command defines, chip table
 │   ├── ads128x_core.c      # Bare driver core (SPI access, config, control, data read)
+│   ├── ads128x_acqdev.c    # Acquisition-class binding (implements rt_acq_ops)
 │   ├── ads128x_adc.c       # Optional RT-Thread ADC device wrapper
-│   └── ads128x_acq.c       # Optional DeanDAQ acquisition module (ISR rings + batch publish)
+│   └── ads128x_acq.c       # Optional multi-chip front-end (ISR rings + batch publish + group ctrl)
 ├── Kconfig
 ├── SConscript
 ├── examples/ads128x_sample.c
@@ -332,6 +389,8 @@ register and reads a few conversions. *Example output*:
 - `ads128x_set_pwdn_pin()` / `ads128x_power_down()` / `ads128x_power_up()`: optional hardware power-down pin control (falls back to STANDBY/WAKEUP commands when no pin is set)
 - `ads128x_check_id()`: read the device ID register (0x00) as a sanity check and print it
 - `ads128x_adc_register()`: register the "adc_ads128x" RT-Thread ADC device (compiled when `ADS128X_USING_ADC_DEVICE`)
+- `ads128x_acqdev_register()`: register an instance as the standard acquisition device "acqN" (compiled when `ADS128X_USING_ACQDEV`)
+- Shared class (from `acq_device.h`): `rt_acq_device_register()` / `rt_acq_find()` / `rt_acq_control()` and the `RT_ACQ_CTRL_*` commands
 
 ## 6. Notes
 

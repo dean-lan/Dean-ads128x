@@ -10,6 +10,7 @@
 
 #include <rtdbg.h>
 #include "ads128x_internal.h"
+#include "acq_device.h"
 
 #if defined(ADS128X_USING_ACQ) && defined(PKG_USING_DDAQ)
 
@@ -124,6 +125,89 @@ void ads128x_acq_isr_all(void)
         }
     }
     rt_sem_release(&acq_sem);
+}
+
+/* ===================== Group control =====================
+ * Implements the unified RT_ACQ_CTRL_* commands for the whole group, choosing
+ * shared vs. independent strategy per wiring:
+ *   - SYNC: one pulse on a shared SYNC pin, otherwise a per-device SYNC command
+ *   - RESET: a shared RESET line resets every chip at once (per-device pin config)
+ *   - ATTACH/DETACH: hand the whole group to an owner (DeanAcq)
+ * Used directly or as a dacq_source.control callback. */
+rt_err_t ads128x_acq_ctrl(int cmd, void *data)
+{
+    rt_uint8_t i;
+
+    switch (cmd)
+    {
+    case RT_ACQ_CTRL_START:
+        for (i = 0; i < ADS128X_MAX_DEVICES; i++)
+        {
+            if (acq_dev_mask & (1u << i))
+            {
+                ads128x_start_continuous(&ads128x_dev[i]);
+            }
+        }
+        return RT_EOK;
+
+    case RT_ACQ_CTRL_STOP:
+        for (i = 0; i < ADS128X_MAX_DEVICES; i++)
+        {
+            if (acq_dev_mask & (1u << i))
+            {
+                ads128x_stop_continuous(&ads128x_dev[i]);
+            }
+        }
+        return RT_EOK;
+
+    case RT_ACQ_CTRL_SYNC:
+        /* Shared SYNC line: one pulse aligns every chip; otherwise per-device. */
+        if (ads128x_dev[0].sync_pin >= 0)
+        {
+            return ads128x_sync_hw(&ads128x_dev[0]);
+        }
+        for (i = 0; i < ADS128X_MAX_DEVICES; i++)
+        {
+            if (acq_dev_mask & (1u << i))
+            {
+                ads128x_sync(&ads128x_dev[i]);
+            }
+        }
+        return RT_EOK;
+
+    case RT_ACQ_CTRL_RESET:
+        for (i = 0; i < ADS128X_MAX_DEVICES; i++)
+        {
+            if (acq_dev_mask & (1u << i))
+            {
+                ads128x_reset(&ads128x_dev[i]);     /* shared RESET line resets all at once */
+            }
+        }
+        return RT_EOK;
+
+    case RT_ACQ_CTRL_ATTACH:
+        for (i = 0; i < ADS128X_MAX_DEVICES; i++)
+        {
+            if (acq_dev_mask & (1u << i))
+            {
+                ads128x_attach(&ads128x_dev[i], data);
+            }
+        }
+        return RT_EOK;
+
+    case RT_ACQ_CTRL_DETACH:
+        for (i = 0; i < ADS128X_MAX_DEVICES; i++)
+        {
+            if (acq_dev_mask & (1u << i))
+            {
+                ads128x_detach(&ads128x_dev[i], ads128x_dev[i].owner);
+            }
+        }
+        return RT_EOK;
+
+    default:
+        return -RT_ENOSYS;
+    }
 }
 
 /* Acquisition thread: waits for data-ready, assembles one frame per conversion

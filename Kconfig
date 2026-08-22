@@ -16,6 +16,16 @@ if PKG_USING_ADS128X
         help
             Wrap the bare driver as an RT-Thread ADC device named "adc_ads128x".
 
+    config ADS128X_USING_ACQDEV
+        bool "Register as a standard acquisition device (acqN, unified class)"
+        default y
+        help
+            Register each instance through the shared acquisition-device class
+            (acq_device.h/.c) as a plain rt_device ("acq0", "acq1", ...):
+            uniform RT_ACQ_CTRL_* commands (rate/start/sync/reset/ownership),
+            frame reads and capability info. Aggregators (DeanAcq) and
+            applications drive every chip the same way.
+
     choice
         prompt "chip model"
         default ADS128X_USING_ADS1282

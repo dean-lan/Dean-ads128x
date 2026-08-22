@@ -80,6 +80,12 @@ ads128x_device_t ads128x_find(void);
 /* Returns the driver handle of instance idx if initialized, otherwise RT_NULL */
 ads128x_device_t ads128x_get(rt_uint8_t idx);
 
+/* Ownership: hand control of the device to `owner` (an aggregator such as
+ * DeanAcq). While owned, configuration/control calls from other contexts are
+ * rejected with -RT_EBUSY; data reads remain allowed. Only the owner can detach. */
+rt_err_t   ads128x_attach(ads128x_device_t dev, void *owner);
+rt_err_t   ads128x_detach(ads128x_device_t dev, void *owner);
+
 /* Configuration */
 rt_err_t   ads128x_set_data_rate(ads128x_device_t dev, rt_uint32_t sps);
 rt_err_t   ads128x_set_gain(ads128x_device_t dev, rt_uint8_t gain);
@@ -127,6 +133,11 @@ void       ads128x_drdy_isr(ads128x_device_t dev);
  * initialized yet. Compile-gated by ADS128X_USING_ADC_DEVICE. */
 rt_err_t   ads128x_adc_register(void);
 
+/* Register instance idx as a standard acquisition device ("acq<idx>") through
+ * the shared class (acq_device.h/.c): uniform RT_ACQ_CTRL_* commands, frame
+ * reads and ownership. Compile-gated by ADS128X_USING_ACQDEV. */
+rt_err_t   ads128x_acqdev_register(rt_uint8_t idx);
+
 /* ===================== Multi-chip acquisition module =====================
  * Compiled with ADS128X_USING_ACQ (depends on the DeanDAQ package).
  * A single acquisition thread waits for data-ready, reads every initialized
@@ -151,6 +162,7 @@ rt_err_t   ads128x_acq_stop(void);
 rt_bool_t  ads128x_acq_is_running(void);
 void       ads128x_acq_isr(ads128x_device_t dev, rt_uint8_t idx);
 void       ads128x_acq_isr_all(void);   /* aggregated DRDY ISR: reads every initialized device */
+rt_err_t   ads128x_acq_ctrl(int cmd, void *data);   /* group control (RT_ACQ_CTRL_*), shared/independent aware */
 #endif /* defined(ADS128X_USING_ACQ) */
 
 #ifdef __cplusplus
