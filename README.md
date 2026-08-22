@@ -1,5 +1,10 @@
 # ADS128X
 
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Language](https://img.shields.io/badge/language-C-blue.svg)]()
+[![Platform](https://img.shields.io/badge/platform-RT--Thread-orange.svg)](https://www.rt-thread.org/)
+[![DeanDAQ](https://img.shields.io/badge/deandaq-companion-green.svg)](https://github.com/dean-lan/DeanDAQ)
+
 ## 1. Introduction
 
 **ads128x** is an RT-Thread software package that provides an SPI driver for the TI ADS128x family of ultra-high-resolution delta-sigma analog-to-digital converters. It is a companion driver of the [DeanDAQ](https://github.com/dean-lan/DeanDAQ) data-acquisition framework: continuous samples can be published into DeanDAQ topics with zero-copy delivery.
@@ -16,11 +21,42 @@ Supported chip models (one code base, chip selected at compile time):
 
 The family shares the same SPI command protocol, data frame format and register map (verified against the ADS1282 SBAS499 Rev I, ADS1282-HT, ADS1283 and ADS1284 datasheets). The ADS1281 register map is assumed to use the same map; confirm against SBAS449.
 
+### Feature summary
+
+- **Bare driver + optional RT-Thread ADC device** (`adc_ads128x`), see [Why both?](#why-bare-api--adc-device)
+- Full register/command set: filter, PGA gain, MUX, HPF, phase, sync, offset/gain calibration
+- Two operating modes: high-resolution (32-bit) / low-power (8-bit status + 24-bit data), auto-extracted
+- DRDY interrupt support for lossless acquisition up to 4 kSPS
+- Single code base for the whole family, chip model chosen in menuconfig
+
 ### License
 
 - Apache-2.0, see `LICENSE`.
 
-## 2. How to Get
+## 2. Quick Start
+
+```c
+#include "ads128x.h"
+
+/* 1. Initialize: SPI bus "spi1", CS=PA4(4), DRDY=PA0(0), RESET=PA1(1) */
+ads128x_init("spi1", 4, 0, 1);
+
+/* 2. Optional: register as the RT-Thread ADC device "adc_ads128x" */
+ads128x_adc_register();
+
+/* 3. Use the bare API */
+ads128x_device_t dev = ads128x_find();
+ads128x_set_data_rate(dev, 1000);       /* 250/500/1000/2000/4000 SPS */
+ads128x_set_gain(dev, 1);               /* 1/2/4/8/16/32/64 */
+
+ads128x_start_continuous(dev);          /* RDATAC mode */
+int32_t sample = ads128x_read_data(dev);
+ads128x_stop_continuous(dev);
+```
+
+See [section 3](#3-usage) for hardware wiring, interrupt-based high-rate acquisition and DeanDAQ integration.
+
+## 3. How to Get
 
 1. Configure in menuconfig:
 
@@ -28,15 +64,25 @@ The family shares the same SPI command protocol, data frame format and register 
 RT-Thread online packages
     peripheral libraries and drivers  --->
         [*] ads128x: TI ADS128x ultra-high-resolution delta-sigma ADC driver
+            [*] Register as an RT-Thread ADC device
+            chip model (ADS1282 (31-bit))  --->
+            SPI bus name (spi1)  --->
+            SPI clock frequency (Hz) (10000000)  --->
+            Chip select pin number (-1)  --->
+            Data ready (DRDY) pin number (-1)  --->
+            Reset pin number (hardware reset) (-1)  --->
+            DRDY wait timeout (ms) (100)  --->
+            [ ] Enable sample command
 ```
 
-2. Select the chip model, SPI bus name and pin numbers, save and run `pkgs --update`.
+2. Save and run `pkgs --update`.
 
-3. Enable the package dependencies: the SPI device framework (`RT_USING_SPI`) and the ADC device framework (`RT_USING_ADC`).
+3. Dependencies: the SPI device framework (`RT_USING_SPI`) and, when the ADC device
+   wrapper is enabled, the ADC device framework (`RT_USING_ADC`).
 
-## 3. Usage
+## 4. Usage
 
-### 3.1 Hardware Connection
+### 4.1 Hardware Connection
 
 | ADS128x Pin | MCU Pin |
 | ----------- | ------- |
@@ -46,10 +92,11 @@ RT-Thread online packages
 | CS          | Any GPIO |
 | DRDY        | Any GPIO (low indicates data ready) |
 | RESET       | Any GPIO (optional) |
+| PWDN        | Any GPIO (optional, active high) |
 
-SPI parameters: Mode 1 (CPOL=0, CPHA=1), MSB first, 8-bit, up to 20MHz (10MHz recommended).
+SPI parameters: Mode 1 (CPOL=0, CPHA=1), MSB first, 8-bit, up to 20 MHz (10 MHz recommended).
 
-### 3.2 Initialization
+### 4.2 Initialization
 
 ```c
 #include "ads128x.h"
@@ -64,33 +111,111 @@ ads128x_adc_register();
 ads128x_device_t dev = ads128x_find();
 ```
 
-### 3.3 Reading Data
+### 4.3 Reading Data (polling)
 
 ```c
-/* Configuration */
 ads128x_set_data_rate(dev, 1000);       /* 250/500/1000/2000/4000 SPS */
 ads128x_set_gain(dev, 4);               /* 1/2/4/8/16/32/64 */
 ads128x_set_filter(dev, ADS128X_FILTER_SINC_LPF_HPF);
 ads128x_set_mux(dev, 0);                /* 0: AINP1/AINN1, 1: AINP2/AINN2 */
 
-/* Continuous read */
 ads128x_start_continuous(dev);
 int32_t val = ads128x_read_data(dev);
 ads128x_stop_continuous(dev);
 ```
 
-For high data rates (>= 1000SPS), call `ads128x_drdy_isr()` in the DRDY falling-edge interrupt and take the data via the semaphore from an application thread, to avoid sample loss with polling.
+Polling works well up to 500 SPS. For higher data rates use the interrupt
+approach below.
 
-### 3.4 ADC Device Interface
+### 4.4 High-Rate Acquisition (DRDY interrupt)
 
-When `ADS128X_USING_ADC_DEVICE` is enabled and `ads128x_adc_register()` is called, the driver is available as an RT-Thread ADC device (device name `adc_ads128x`) through the standard interface:
+The ADS128x has **no internal FIFO**: a single 4-byte data register holds the
+latest conversion, and a new conversion **overwrites** the previous one if it is
+not read in time. The bottleneck is not SPI bandwidth (reading 4 bytes at 20 MHz
+takes ~1.6 us, versus a 250 us sample period at 4 kSPS) but how promptly the MCU
+responds to DRDY. Use the falling-edge DRDY interrupt and read from an
+application thread:
+
+```c
+#include <rtdevice.h>
+
+static void drdy_isr_entry(void *args)   /* DRDY falling-edge ISR */
+{
+    ads128x_drdy_isr(ads128x_find());    /* release the data-ready semaphore */
+}
+
+/* in init code: */
+rt_pin_attach_irq(0, PIN_IRQ_MODE_FALLING, drdy_isr_entry, RT_NULL);
+rt_pin_irq_enable(0, PIN_IRQ_ENABLE);
+
+/* acquisition thread: */
+void acq_thread_entry(void *param)
+{
+    ads128x_device_t dev = ads128x_find();
+
+    while (1)
+    {
+        ads128x_wait_data(dev, RT_WAITING_FOREVER);  /* wakes on DRDY */
+        int32_t val = ads128x_read_data(dev);
+        /* ... use val ... */
+    }
+}
+```
+
+Performance tips:
+
+- Raise the SPI clock to 10-20 MHz (`ADS128X_SPI_MAX_HZ`).
+- Enable SPI DMA at the BSP layer to offload the CPU during the 4-byte read.
+- `ads128x_start_continuous()` (RDATAC) keeps CS low and skips the per-sample
+  RDATA command, saving SPI overhead.
+
+### 4.5 DeanDAQ Integration
+
+The driver pairs with the [DeanDAQ](https://github.com/dean-lan/DeanDAQ)
+publish/subscribe bus: feed samples from the DRDY-driven acquisition thread into
+a topic and let any number of subscribers consume them with zero-copy borrow:
+
+```c
+#include "ads128x.h"
+#include <ddaq.h>
+#include <ddaq_topics.h>   /* generated: struct ads128x_sample_s, DDAQ_ID(...) */
+
+void acq_thread_entry(void *param)
+{
+    struct ads128x_sample_s msg;
+    ads128x_device_t dev = ads128x_find();
+
+    while (1)
+    {
+        ads128x_wait_data(dev, RT_WAITING_FOREVER);
+        msg.timestamp = rt_tick_get();
+        msg.value = ads128x_read_data(dev);
+        ddaq_publish(DDAQ_ID(ads128x_sample), &msg, sizeof(msg));
+    }
+}
+```
+
+### 4.6 ADC Device Interface
+
+When `ADS128X_USING_ADC_DEVICE` is enabled and `ads128x_adc_register()` is called,
+the driver is available as an RT-Thread ADC device (device name `adc_ads128x`)
+through the standard interface:
 
 ```c
 rt_adc_device_t adc = (rt_adc_device_t)rt_device_find("adc_ads128x");
 rt_adc_read(adc, 0);
 ```
 
-### 3.5 File Layout
+#### Why bare API + ADC device?
+
+- The RT-Thread ADC framework only models single-shot channel reads
+  (`enabled` / `convert` / `get_resolution` / `get_vref`). It cannot express
+  continuous acquisition, DRDY interrupts, gain/filter/HPF/sync/calibration.
+- The bare API therefore exposes the full capability, and the device wrapper is
+  a convenience for standard `rt_adc_read()` access.
+- `ADS128X_USING_ADC_DEVICE` is enabled by default; disable it to save RAM/ROM.
+
+### 4.7 File Layout
 
 ```
 Dean-ads128x/
@@ -106,22 +231,31 @@ Dean-ads128x/
 └── README.md
 ```
 
-### 3.6 msh Sample
+### 4.8 msh Sample
 
-Enable `ADS128X_SAMPLE` and run:
+Enable `ADS128X_SAMPLE` in menuconfig and run:
 
 ```
 msh > ads128x_sample
 ```
 
-## 4. API Reference
+The sample initializes the driver with the configured pins, prints the ID
+register and reads a few conversions. *Example output*:
 
-- `ads128x_init()`: initialize the driver and register the ADC device
-- `ads128x_find()`: find the driver handle by device name
+```
+[ads128x] ID register = 0x1A
+[ads128x] sample[0] = 0000C2A1
+[ads128x] sample[1] = FFFF3E50
+```
+
+## 5. API Reference
+
+- `ads128x_init()`: initialize the driver and attach the SPI device
+- `ads128x_find()`: find the driver handle (returns the single instance)
 - `ads128x_set_data_rate()` / `ads128x_set_gain()` / `ads128x_set_mux()`: data rate / PGA gain / input channel configuration
 - `ads128x_set_filter()` / `ads128x_set_phase()` / `ads128x_set_hpf()`: digital filter type, phase response, HPF corner frequency
 - `ads128x_set_mode()`: switch between high-resolution / low-power mode
-- `ads128x_start_continuous()` / `ads128x_stop_continuous()`: read-data-continuous mode control
+- `ads128x_start_continuous()` / `ads128x_stop_continuous()`: read-data-continuous (RDATAC) mode control
 - `ads128x_read_data()`: read one conversion result
 - `ads128x_wait_data()` / `ads128x_drdy_isr()`: wait for data ready / ISR entry
 - `ads128x_reset()` / `ads128x_standby()` / `ads128x_wakeup()`: operation control
@@ -130,15 +264,16 @@ msh > ads128x_sample
 - `ads128x_read_reg()` / `ads128x_write_reg()`: register access for custom calibration (OFC0-2/FSC0-2) and diagnostics
 - `ads128x_set_pwdn_pin()` / `ads128x_power_down()` / `ads128x_power_up()`: optional hardware power-down pin control (falls back to STANDBY/WAKEUP commands when no pin is set)
 - `ads128x_check_id()`: read the device ID register (0x00) as a sanity check and print it
+- `ads128x_adc_register()`: register the "adc_ads128x" RT-Thread ADC device (compiled when `ADS128X_USING_ADC_DEVICE`)
 
-## 5. Notes
+## 6. Notes
 
 - The data frame is fixed at 4 bytes: high-resolution mode (MODE=1, default) outputs 32-bit two's complement; low-power mode outputs an 8-bit status byte + 24-bit data. The driver extracts data automatically based on the MODE bit of `config0` and performs sign extension.
 - `ads128x_check_id()` reads the ID register (0x00): TI does not publish per-model ID values, so only an existence check is possible (the low nibble is always 0). It cannot distinguish chip models; the model is still selected at compile time by Kconfig.
 - When no DRDY pin is configured, reads do not wait and return the current data directly.
-- Polling works at low data rates (<= 500SPS); use the interrupt approach for high data rates.
 - The register map and data frame format of the ADS1281 have not been directly verified; confirm against SBAS449 before use.
+- Memory usage is minimal: the driver holds one static instance (no dynamic allocation on the data path).
 
-## 6. Contact & Thanks
+## 7. Contact & Thanks
 
 - Maintainer: [dean-lan](https://github.com/dean-lan)
