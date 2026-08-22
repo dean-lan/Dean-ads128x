@@ -104,6 +104,28 @@ void ads128x_acq_isr(ads128x_device_t dev, rt_uint8_t idx)
     rt_sem_release(&acq_sem);
 }
 
+/* Aggregated DRDY ISR: for setups where all DRDY lines are gated onto a single
+ * interrupt (wired-OR) with SYNC-aligned conversions. Reads every initialized
+ * device into its ring and wakes the worker exactly once. */
+void ads128x_acq_isr_all(void)
+{
+    rt_uint8_t i;
+
+    if (acq_thread == RT_NULL)
+    {
+        return;
+    }
+    for (i = 0; i < ADS128X_MAX_DEVICES; i++)
+    {
+        if (acq_dev_mask & (1u << i))
+        {
+            rt_int32_t value = ads128x_read_data(&ads128x_dev[i]);
+            acq_ring_push(i, value);
+        }
+    }
+    rt_sem_release(&acq_sem);
+}
+
 /* Acquisition thread: waits for data-ready, assembles one frame per conversion
  * (one sample from every initialized device, aligned by SYNC) and publishes
  * `batch` frames in a single ddaq_publish() call. */

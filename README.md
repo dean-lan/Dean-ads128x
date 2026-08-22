@@ -280,6 +280,18 @@ static void drdy0_isr(void *arg) { ads128x_acq_isr(ads128x_get(0), 0); }
 static void drdy1_isr(void *arg) { ads128x_acq_isr(ads128x_get(1), 1); }
 ```
 
+**Shared control lines** (multi-chip hardware variants):
+
+- **Shared SYNC pin**: configure one GPIO and pulse it once to align every chip
+  sharing the line (`ads128x_set_sync_pin()` / `ads128x_sync_hw()`); no need to
+  send per-chip SYNC commands.
+- **Shared DRDY (wired-OR)**: use a single aggregated ISR that reads every
+  device in one go and wakes the worker once:
+
+```c
+static void drdy_shared_isr(void *arg) { ads128x_acq_isr_all(); }
+```
+
 Stop the module with `ads128x_acq_stop()`.
 
 ### 4.9 msh Sample
@@ -305,6 +317,7 @@ register and reads a few conversions. *Example output*:
 - `ads128x_find()`: find the driver handle (returns instance 0)
 - `ads128x_init_ex()` / `ads128x_get()`: multi-chip instance initialization / accessor
 - `ads128x_acq_start()` / `ads128x_acq_stop()` / `ads128x_acq_isr()`: DeanDAQ acquisition module (multi-chip, batched publish)
+- `ads128x_acq_isr_all()`: aggregated DRDY ISR for a shared/wired-OR DRDY line (reads every device, one wakeup)
 - `ads128x_set_data_rate()` / `ads128x_set_gain()` / `ads128x_set_mux()`: data rate / PGA gain / input channel configuration
 - `ads128x_set_filter()` / `ads128x_set_phase()` / `ads128x_set_hpf()`: digital filter type, phase response, HPF corner frequency
 - `ads128x_set_mode()`: switch between high-resolution / low-power mode
@@ -313,6 +326,7 @@ register and reads a few conversions. *Example output*:
 - `ads128x_wait_data()` / `ads128x_drdy_isr()`: wait for data ready / ISR entry
 - `ads128x_reset()` / `ads128x_standby()` / `ads128x_wakeup()`: operation control
 - `ads128x_sync()` / `ads128x_set_sync_mode()`: conversion synchronization (multi-chip alignment)
+- `ads128x_set_sync_pin()` / `ads128x_sync_hw()`: hardware SYNC pin (shared SYNC line, pulse aligns all chips; falls back to the SYNC command)
 - `ads128x_offset_cal()` / `ads128x_gain_cal()`: offset / gain calibration commands
 - `ads128x_read_reg()` / `ads128x_write_reg()`: register access for custom calibration (OFC0-2/FSC0-2) and diagnostics
 - `ads128x_set_pwdn_pin()` / `ads128x_power_down()` / `ads128x_power_up()`: optional hardware power-down pin control (falls back to STANDBY/WAKEUP commands when no pin is set)

@@ -98,6 +98,7 @@ struct ads128x_device
     rt_base_t drdy_pin;                     /* Data-ready pin */
     rt_base_t reset_pin;                    /* Reset pin */
     rt_base_t pwdn_pin;                     /* Power-down pin (optional, -1 if unused) */
+    rt_base_t sync_pin;                     /* Hardware SYNC pin (optional, -1 if unused) */
     struct rt_semaphore drdy_sem;           /* Data-ready semaphore */
     rt_bool_t rdatac_mode;                  /* In read-data-continuous mode */
 };

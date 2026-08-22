@@ -423,6 +423,42 @@ rt_err_t ads128x_sync(struct ads128x_device *dev)
     return ads128x_cmd(dev, ADS128X_CMD_SYNC);
 }
 
+/* Configure the hardware SYNC pin (a shared SYNC line can align several chips
+ * with a single pulse). Idle high; a low pulse synchronizes conversions. */
+rt_err_t ads128x_set_sync_pin(ads128x_device_t dev, rt_base_t sync_pin)
+{
+    if (dev == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+    dev->sync_pin = sync_pin;
+    if (sync_pin >= 0)
+    {
+        rt_pin_mode(sync_pin, PIN_MODE_OUTPUT);
+        rt_pin_write(sync_pin, PIN_HIGH);
+    }
+    return RT_EOK;
+}
+
+/* Pulse the hardware SYNC pin to align all chips sharing the line at once;
+ * falls back to the SYNC command when no pin has been configured. */
+rt_err_t ads128x_sync_hw(ads128x_device_t dev)
+{
+    if (dev == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+    if (dev->sync_pin < 0)
+    {
+        return ads128x_cmd(dev, ADS128X_CMD_SYNC);
+    }
+
+    rt_pin_write(dev->sync_pin, PIN_LOW);
+    rt_hw_us_delay(2);          /* pulse width: several fCLK periods */
+    rt_pin_write(dev->sync_pin, PIN_HIGH);
+    return RT_EOK;
+}
+
 /* Synchronization mode (CONFIG0 SYNC bit): 0 = pulse sync (default), 1 = continuous sync */
 rt_err_t ads128x_set_sync_mode(struct ads128x_device *dev, rt_bool_t continuous)
 {
@@ -577,6 +613,7 @@ rt_err_t ads128x_init_ex(rt_uint8_t idx, const char *spi_bus_name, rt_base_t cs_
     dev->drdy_pin  = drdy_pin;
     dev->reset_pin = reset_pin;
     dev->pwdn_pin  = -1;
+    dev->sync_pin  = -1;
 
     /* Select the chip model specified at compile time */
 #if defined(ADS128X_USING_ADS1281)

@@ -95,6 +95,8 @@ rt_err_t   ads128x_standby(ads128x_device_t dev);
 rt_err_t   ads128x_wakeup(ads128x_device_t dev);
 rt_err_t   ads128x_sync(ads128x_device_t dev);                        /* Issue the SYNC command */
 rt_err_t   ads128x_set_sync_mode(ads128x_device_t dev, rt_bool_t continuous);
+rt_err_t   ads128x_set_sync_pin(ads128x_device_t dev, rt_base_t sync_pin);
+rt_err_t   ads128x_sync_hw(ads128x_device_t dev);                     /* Pulse the hardware SYNC pin */
 rt_err_t   ads128x_offset_cal(ads128x_device_t dev);
 rt_err_t   ads128x_gain_cal(ads128x_device_t dev);
 
@@ -148,6 +150,7 @@ rt_err_t   ads128x_acq_start(rt_uint16_t topic_id, rt_uint16_t batch);
 rt_err_t   ads128x_acq_stop(void);
 rt_bool_t  ads128x_acq_is_running(void);
 void       ads128x_acq_isr(ads128x_device_t dev, rt_uint8_t idx);
+void       ads128x_acq_isr_all(void);   /* aggregated DRDY ISR: reads every initialized device */
 #endif /* defined(ADS128X_USING_ACQ) */
 
 #ifdef __cplusplus
