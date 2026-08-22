@@ -24,9 +24,11 @@ The family shares the same SPI command protocol, data frame format and register 
 ### Feature summary
 
 - **Bare driver + optional RT-Thread ADC device** (`adc_ads128x`), see [Why both?](#why-bare-api--adc-device)
+- **Multi-chip support**: up to `ADS128X_MAX_DEVICES` devices on one or more SPI buses, aligned via SYNC
 - Full register/command set: filter, PGA gain, MUX, HPF, phase, sync, offset/gain calibration
 - Two operating modes: high-resolution (32-bit) / low-power (8-bit status + 24-bit data), auto-extracted
 - DRDY interrupt support for lossless acquisition up to 4 kSPS
+- Optional DeanDAQ acquisition module: per-device ISR rings + batched frame publish
 - Single code base for the whole family, chip model chosen in menuconfig
 
 ### License
@@ -66,6 +68,8 @@ RT-Thread online packages
         [*] ads128x: TI ADS128x ultra-high-resolution delta-sigma ADC driver
             [*] Register as an RT-Thread ADC device
             chip model (ADS1282 (31-bit))  --->
+            Number of ADS128x devices (multi-chip support) (1)  --->
+            [ ] Enable the DeanDAQ acquisition module (multi-chip batch publish)
             SPI bus name (spi1)  --->
             SPI clock frequency (Hz) (10000000)  --->
             Chip select pin number (-1)  --->
@@ -77,8 +81,10 @@ RT-Thread online packages
 
 2. Save and run `pkgs --update`.
 
-3. Dependencies: the SPI device framework (`RT_USING_SPI`) and, when the ADC device
-   wrapper is enabled, the ADC device framework (`RT_USING_ADC`).
+3. Dependencies: the SPI device framework (`RT_USING_SPI`), the ADC device
+   framework (`RT_USING_ADC`, when the ADC device wrapper is enabled) and, for
+   the acquisition module, the [DeanDAQ](https://github.com/dean-lan/DeanDAQ)
+   package (`PKG_USING_DDAQ`).
 
 ## 4. Usage
 
@@ -224,14 +230,59 @@ Dean-ads128x/
 ├── src/
 │   ├── ads128x_internal.h  # Internal: device struct, register/command defines, chip table
 │   ├── ads128x_core.c      # Bare driver core (SPI access, config, control, data read)
-│   └── ads128x_adc.c       # Optional RT-Thread ADC device wrapper
+│   ├── ads128x_adc.c       # Optional RT-Thread ADC device wrapper
+│   └── ads128x_acq.c       # Optional DeanDAQ acquisition module (ISR rings + batch publish)
 ├── Kconfig
 ├── SConscript
 ├── examples/ads128x_sample.c
 └── README.md
 ```
 
-### 4.8 msh Sample
+### 4.8 Multi-Chip & DeanDAQ Acquisition
+
+For multi-chip setups (e.g. several ADS1282s sharing one SPI bus, conversions
+aligned via SYNC), initialize every instance and start the acquisition module:
+
+```c
+/* Instances 0..N-1, each with its own CS/DRDY/RESET pins (shared SPI bus OK) */
+ads128x_init_ex(0, "spi1", CS0, DRDY0, RESET0);
+ads128x_init_ex(1, "spi1", CS1, DRDY1, RESET1);
+
+/* DeanDAQ acquisition module: one frame per conversion, 8 frames per publish */
+ads128x_acq_start(DDAQ_ID(ads128x_acq), 8);
+```
+
+Compiled with `ADS128X_USING_ACQ` (requires `PKG_USING_DDAQ`), the module puts
+every initialized device into RDATAC mode, issues SYNC for aligned conversions,
+and then:
+
+- **ISR side** (`ads128x_acq_isr()` from each DRDY interrupt): reads the fresh
+  sample into a per-device software ring (depth `ADS128X_ACQ_RING_DEPTH`) and
+  wakes the worker. The ISR stays short: one 4-byte SPI read plus a push.
+- **Worker thread**: assembles one frame per conversion (a timestamp plus one
+  sample per device), packs `batch` frames and publishes them with a single
+  `ddaq_publish()` call (publish rate = data rate / batch).
+
+The published payload is an array of `struct ads128x_acq_frame`:
+
+```c
+struct ads128x_acq_frame
+{
+    rt_uint64_t timestamp;
+    rt_int32_t  ch[ADS128X_MAX_DEVICES];
+};
+```
+
+Wire the DRDY ISRs:
+
+```c
+static void drdy0_isr(void *arg) { ads128x_acq_isr(ads128x_get(0), 0); }
+static void drdy1_isr(void *arg) { ads128x_acq_isr(ads128x_get(1), 1); }
+```
+
+Stop the module with `ads128x_acq_stop()`.
+
+### 4.9 msh Sample
 
 Enable `ADS128X_SAMPLE` in menuconfig and run:
 
@@ -251,7 +302,9 @@ register and reads a few conversions. *Example output*:
 ## 5. API Reference
 
 - `ads128x_init()`: initialize the driver and attach the SPI device
-- `ads128x_find()`: find the driver handle (returns the single instance)
+- `ads128x_find()`: find the driver handle (returns instance 0)
+- `ads128x_init_ex()` / `ads128x_get()`: multi-chip instance initialization / accessor
+- `ads128x_acq_start()` / `ads128x_acq_stop()` / `ads128x_acq_isr()`: DeanDAQ acquisition module (multi-chip, batched publish)
 - `ads128x_set_data_rate()` / `ads128x_set_gain()` / `ads128x_set_mux()`: data rate / PGA gain / input channel configuration
 - `ads128x_set_filter()` / `ads128x_set_phase()` / `ads128x_set_hpf()`: digital filter type, phase response, HPF corner frequency
 - `ads128x_set_mode()`: switch between high-resolution / low-power mode

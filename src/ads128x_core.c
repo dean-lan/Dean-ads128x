@@ -11,8 +11,13 @@
 #include <rtdbg.h>
 #include "ads128x_internal.h"
 
-/* Single-instance driver device (declared extern in ads128x_internal.h) */
-struct ads128x_device ads128x_dev;
+/* Driver device instances (declared extern in ads128x_internal.h). Instance 0
+ * keeps the legacy single-device behaviour. */
+struct ads128x_device ads128x_dev[ADS128X_MAX_DEVICES];
+
+/* Unique SPI slave names per instance ("ax0", "ax1", ...); the legacy name
+ * "ads128x" cannot carry an index within RT_NAME_MAX characters. */
+static char ads128x_spi_names[ADS128X_MAX_DEVICES][RT_NAME_MAX];
 
 /* ===================== Chip info table =====================
  * The chip model is selected at compile time by Kconfig.
@@ -522,25 +527,50 @@ rt_err_t ads128x_check_id(struct ads128x_device *dev)
 }
 
 /* ===================== Initialization ===================== */
+/* Legacy single-device accessor: returns instance 0 */
 ads128x_device_t ads128x_find(void)
 {
-    if (ads128x_dev.spi_dev.bus == RT_NULL)
+    if (ads128x_dev[0].spi_dev.bus == RT_NULL)
     {
         return RT_NULL;
     }
-    return &ads128x_dev;
+    return &ads128x_dev[0];
 }
 
+/* Instance accessor for multi-chip setups; returns RT_NULL if the index is out
+ * of range or the device has not been initialized */
+ads128x_device_t ads128x_get(rt_uint8_t idx)
+{
+    if (idx >= ADS128X_MAX_DEVICES || ads128x_dev[idx].spi_dev.bus == RT_NULL)
+    {
+        return RT_NULL;
+    }
+    return &ads128x_dev[idx];
+}
+
+/* Legacy single-device init: initializes instance 0 */
 rt_err_t ads128x_init(const char *spi_bus_name, rt_base_t cs_pin,
                       rt_base_t drdy_pin, rt_base_t reset_pin)
 {
-    struct ads128x_device *dev = &ads128x_dev;
+    return ads128x_init_ex(0, spi_bus_name, cs_pin, drdy_pin, reset_pin);
+}
+
+rt_err_t ads128x_init_ex(rt_uint8_t idx, const char *spi_bus_name, rt_base_t cs_pin,
+                         rt_base_t drdy_pin, rt_base_t reset_pin)
+{
+    struct ads128x_device *dev;
     struct rt_spi_configuration cfg;
     rt_err_t ret;
 
+    if (idx >= ADS128X_MAX_DEVICES)
+    {
+        LOG_E("ads128x: index %d out of range (ADS128X_MAX_DEVICES=%d)", idx, ADS128X_MAX_DEVICES);
+        return -RT_EINVAL;
+    }
+    dev = &ads128x_dev[idx];
     if (dev->spi_dev.bus != RT_NULL)
     {
-        LOG_W("ads128x: already initialized");
+        LOG_W("ads128x: device %d already initialized", idx);
         return -RT_EBUSY;
     }
 
@@ -562,8 +592,9 @@ rt_err_t ads128x_init(const char *spi_bus_name, rt_base_t cs_pin,
     return -RT_EINVAL;
 #endif
 
-    /* Attach the ADS128x SPI slave device to the bus */
-    ret = rt_spi_bus_attach_device_cspin(&dev->spi_dev, ADS128X_SPI_DEV_NAME,
+    /* Attach the ADS128x SPI slave device to the bus (unique name per instance) */
+    rt_snprintf(ads128x_spi_names[idx], RT_NAME_MAX, "ax%d", idx);
+    ret = rt_spi_bus_attach_device_cspin(&dev->spi_dev, ads128x_spi_names[idx],
                                          spi_bus_name, cs_pin, RT_NULL);
     if (ret != RT_EOK)
     {
@@ -627,7 +658,7 @@ rt_err_t ads128x_init(const char *spi_bus_name, rt_base_t cs_pin,
         ads128x_set_mux(dev, 0);
     }
 
-    LOG_I("ads128x: %s driver initialized on %s", dev->chip->name, spi_bus_name);
+    LOG_I("ads128x: %s driver initialized on %s (instance %d)", dev->chip->name, spi_bus_name, idx);
 
     return RT_EOK;
 }

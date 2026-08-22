@@ -102,7 +102,14 @@ struct ads128x_device
     rt_bool_t rdatac_mode;                  /* In read-data-continuous mode */
 };
 
-/* Single driver instance, defined in ads128x_core.c */
-extern struct ads128x_device ads128x_dev;
+/* Maximum number of simultaneous devices (multi-chip acquisition). Set by
+ * ADS128X_MAX_DEVICES in Kconfig; defaults to a single instance when unset. */
+#ifndef ADS128X_MAX_DEVICES
+#define ADS128X_MAX_DEVICES        1
+#endif
+
+/* Driver instances, defined in ads128x_core.c. Instance 0 keeps the legacy
+ * single-device behaviour. */
+extern struct ads128x_device ads128x_dev[ADS128X_MAX_DEVICES];
 
 #endif /* __ADS128X_INTERNAL_H__ */

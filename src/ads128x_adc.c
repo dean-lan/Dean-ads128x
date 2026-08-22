@@ -60,7 +60,7 @@ static const struct rt_adc_ops ads128x_adc_ops =
 
 rt_err_t ads128x_adc_register(void)
 {
-    struct ads128x_device *dev = &ads128x_dev;
+    struct ads128x_device *dev = &ads128x_dev[0];
     rt_err_t ret;
 
     if (dev->spi_dev.bus == RT_NULL)

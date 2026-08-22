@@ -11,6 +11,9 @@ if GetDepend(['PKG_USING_ADS128X']):
     # optional RT-Thread ADC device wrapper
     if GetDepend(['ADS128X_USING_ADC_DEVICE']):
         src += Glob('src/ads128x_adc.c')
+    # optional DeanDAQ acquisition module (multi-chip batch publish)
+    if GetDepend(['ADS128X_USING_ACQ']):
+        src += Glob('src/ads128x_acq.c')
     # sample
     if GetDepend(['ADS128X_SAMPLE']):
         src += Glob('examples/*.c')

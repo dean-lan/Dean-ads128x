@@ -33,6 +33,39 @@ if PKG_USING_ADS128X
             bool "ADS1284 (31-bit, dual power mode)"
     endchoice
 
+    config ADS128X_MAX_DEVICES
+        int "Number of ADS128x devices (multi-chip support)"
+        range 1 8
+        default 1
+        help
+            Maximum simultaneous devices driven by one driver instance set.
+            Each device needs its own CS (and usually its own DRDY/RESET pins);
+            they can share one SPI bus (arbitrated by the SPI framework).
+
+    config ADS128X_USING_ACQ
+        bool "Enable the DeanDAQ acquisition module (multi-chip batch publish)"
+        default n
+        depends on PKG_USING_DDAQ
+        help
+            A single acquisition thread reads every initialized device from
+            its DRDY ISR software ring and publishes batched frames to a
+            DeanDAQ topic. Requires the DeanDAQ package (PKG_USING_DDAQ).
+
+    if ADS128X_USING_ACQ
+
+        config ADS128X_ACQ_RING_DEPTH
+            int "Per-device ISR ring depth (samples)"
+            default 32
+
+        config ADS128X_ACQ_WAIT_TIMEOUT
+            int "DRDY gap timeout (ms)"
+            default 1000
+            help
+                How long the acquisition thread tolerates missing DRDY from a
+                device before giving up assembling complete frames.
+
+    endif
+
     config ADS128X_SPI_BUS_NAME
         string "SPI bus name"
         default "spi1"

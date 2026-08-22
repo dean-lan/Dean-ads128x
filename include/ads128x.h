@@ -43,6 +43,11 @@ extern "C" {
 /* ADC device name registered by ads128x_adc_register() */
 #define ADS128X_ADC_DEV_NAME    "adc_ads128x"
 
+/* Maximum number of simultaneous devices (Kconfig ADS128X_MAX_DEVICES, default 1) */
+#ifndef ADS128X_MAX_DEVICES
+#define ADS128X_MAX_DEVICES     1
+#endif
+
 /* Opaque driver handle */
 struct ads128x_device;
 typedef struct ads128x_device *ads128x_device_t;
@@ -63,8 +68,17 @@ enum ads128x_filter
 rt_err_t   ads128x_init(const char *spi_bus_name, rt_base_t cs_pin,
                         rt_base_t drdy_pin, rt_base_t reset_pin);
 
-/* Returns the driver handle if initialized, otherwise RT_NULL */
+/* Initialize one instance (idx < ADS128X_MAX_DEVICES) for multi-chip setups.
+ * Each instance attaches to the SPI bus with its own CS; the bus itself is
+ * arbitrated by the SPI device framework. */
+rt_err_t   ads128x_init_ex(rt_uint8_t idx, const char *spi_bus_name, rt_base_t cs_pin,
+                           rt_base_t drdy_pin, rt_base_t reset_pin);
+
+/* Returns the driver handle of instance 0 if initialized, otherwise RT_NULL */
 ads128x_device_t ads128x_find(void);
+
+/* Returns the driver handle of instance idx if initialized, otherwise RT_NULL */
+ads128x_device_t ads128x_get(rt_uint8_t idx);
 
 /* Configuration */
 rt_err_t   ads128x_set_data_rate(ads128x_device_t dev, rt_uint32_t sps);
@@ -110,6 +124,31 @@ void       ads128x_drdy_isr(ads128x_device_t dev);
  * (see ADS128X_ADC_DEV_NAME). Returns -RT_ERROR if the bare driver is not
  * initialized yet. Compile-gated by ADS128X_USING_ADC_DEVICE. */
 rt_err_t   ads128x_adc_register(void);
+
+/* ===================== Multi-chip acquisition module =====================
+ * Compiled with ADS128X_USING_ACQ (depends on the DeanDAQ package).
+ * A single acquisition thread waits for data-ready, reads every initialized
+ * device and packs one frame per conversion. The frame layout is:
+ *
+ *     rt_uint64 timestamp              -- conversion tick
+ *     rt_int32  ch[ADS128X_MAX_DEVICES] -- one sample per device
+ *
+ * `batch` frames are accumulated into one ddaq_publish() call (batched
+ * publish: publish rate = data rate / batch, fewer wakeups on the bus).
+ * Call ads128x_acq_isr() from every device DRDY ISR; it only reads the sample
+ * into a per-device software ring and releases the worker semaphore. */
+#if defined(ADS128X_USING_ACQ)
+struct ads128x_acq_frame
+{
+    rt_uint64_t timestamp;
+    rt_int32_t  ch[ADS128X_MAX_DEVICES];
+};
+
+rt_err_t   ads128x_acq_start(rt_uint16_t topic_id, rt_uint16_t batch);
+rt_err_t   ads128x_acq_stop(void);
+rt_bool_t  ads128x_acq_is_running(void);
+void       ads128x_acq_isr(ads128x_device_t dev, rt_uint8_t idx);
+#endif /* defined(ADS128X_USING_ACQ) */
 
 #ifdef __cplusplus
 }
