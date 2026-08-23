@@ -92,8 +92,12 @@ static rt_err_t ads128x_acqdev_get_info(struct rt_acq_device *acq, struct rt_acq
     info->resolution = ads->chip->resolution;
     info->min_rate_hz = 250;
     info->max_rate_hz = 4000;
-    info->flags = RT_ACQ_FLAG_STREAM | RT_ACQ_FLAG_SYNC | RT_ACQ_FLAG_RESET |
+    info->flags = RT_ACQ_FLAG_STREAM | RT_ACQ_FLAG_SYNC_CMD | RT_ACQ_FLAG_RESET |
                   RT_ACQ_FLAG_POWER | RT_ACQ_FLAG_GAIN | RT_ACQ_FLAG_FILTER;
+    if (ads->sync_pin >= 0)
+    {
+        info->flags |= RT_ACQ_FLAG_SYNC_HW;
+    }
     return RT_EOK;
 }
 

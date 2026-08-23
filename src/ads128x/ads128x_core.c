@@ -669,6 +669,14 @@ rt_err_t ads128x_init_ex(rt_uint8_t idx, const char *spi_bus_name, rt_base_t cs_
     dev->reset_pin = reset_pin;
     dev->pwdn_pin  = -1;
     dev->sync_pin  = -1;
+#ifdef ADS128X_SYNC_PIN
+    if (ADS128X_SYNC_PIN >= 0)
+    {
+        dev->sync_pin = ADS128X_SYNC_PIN;
+        rt_pin_mode(ADS128X_SYNC_PIN, PIN_MODE_OUTPUT);
+        rt_pin_write(ADS128X_SYNC_PIN, PIN_HIGH);   /* idle high, pulse low to sync */
+    }
+#endif
 
     /* Select the chip model specified at compile time */
 #if defined(ADS128X_USING_ADS1281)

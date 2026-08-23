@@ -104,6 +104,14 @@ if PKG_USING_ADS128X
         int "Reset pin number (hardware reset)"
         default -1
 
+    config ADS128X_SYNC_PIN
+        int "SYNC pin number (hardware sync, shared line)"
+        default -1
+        help
+            Optional hardware SYNC pin. When set, ads128x_sync_hw() pulses this
+            line to align every chip sharing it; without a pin the SYNC command
+            is used instead.
+
     config ADS128X_DRDY_TIMEOUT
         int "DRDY wait timeout (ms)"
         default 100

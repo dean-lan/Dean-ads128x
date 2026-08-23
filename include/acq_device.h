@@ -77,11 +77,13 @@ struct rt_acq_frame
 
 /* ===================== Capability flags ===================== */
 #define RT_ACQ_FLAG_STREAM      (1 << 0)    /* continuous acquisition (START/STOP) */
-#define RT_ACQ_FLAG_SYNC        (1 << 1)    /* conversion synchronization */
-#define RT_ACQ_FLAG_RESET       (1 << 2)    /* hardware reset (or command) */
-#define RT_ACQ_FLAG_POWER       (1 << 3)    /* power management */
-#define RT_ACQ_FLAG_GAIN        (1 << 4)    /* programmable gain */
-#define RT_ACQ_FLAG_FILTER      (1 << 5)    /* programmable filter */
+#define RT_ACQ_FLAG_SYNC        (1 << 1)    /* conversion synchronization (generic) */
+#define RT_ACQ_FLAG_SYNC_HW     (1 << 2)    /* SYNC via a hardware pin/line */
+#define RT_ACQ_FLAG_SYNC_CMD    (1 << 3)    /* SYNC via a software/command */
+#define RT_ACQ_FLAG_RESET       (1 << 4)    /* hardware reset (or command) */
+#define RT_ACQ_FLAG_POWER       (1 << 5)    /* power management */
+#define RT_ACQ_FLAG_GAIN        (1 << 6)    /* programmable gain */
+#define RT_ACQ_FLAG_FILTER      (1 << 7)    /* programmable filter */
 
 /* ===================== Chip operations (each chip implements these) =====================
  * `dev` is the struct rt_acq_device; use container_of/user_data to reach the
