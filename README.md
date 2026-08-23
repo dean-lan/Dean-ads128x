@@ -5,6 +5,8 @@
 [![Platform](https://img.shields.io/badge/platform-RT--Thread-orange.svg)](https://www.rt-thread.org/)
 [![DeanDAQ](https://img.shields.io/badge/deandaq-adapter-green.svg)](https://github.com/dean-lan/DeanDAQ)
 
+**English** | [中文](README_zh.md)
+
 ## 1. Introduction
 
 **DeanAcq-dev** (upgraded from `Dean-ads128x`) is an RT-Thread software package
@@ -73,7 +75,7 @@ int32_t sample = ads128x_read_data(dev);
 ads128x_stop_continuous(dev);
 ```
 
-See [section 3](#3-usage) for hardware wiring, interrupt-based high-rate acquisition and DeanDAQ integration.
+See [section 4](#4-usage) for hardware wiring, interrupt-based high-rate acquisition and DeanDAQ integration.
 
 ## 3. How to Get
 
