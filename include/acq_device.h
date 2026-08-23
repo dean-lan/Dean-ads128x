@@ -117,10 +117,10 @@ struct rt_acq_device
     void *owner;                        /* aggregator owning the device (NULL = free) */
 };
 
-/* ===================== Shared framework API (acq_device.c) ===================== */
-/* Register a chip device as "acqN"-style standard device. `name` should follow
- * the convention (e.g. "acq0"); `user_data` is passed back to the ops. */
-rt_err_t rt_acq_device_register(struct rt_acq_device *dev, const char *name,
+/* ===================== Shared framework API (acq_device.c) =====================
+ * Device names are allocated centrally and uniquely across every chip
+ * ("acq0", "acq1", ...); `user_data` is passed back to the ops. */
+rt_err_t rt_acq_device_register(struct rt_acq_device *dev,
                                 const struct rt_acq_ops *ops, void *user_data);
 rt_err_t rt_acq_device_unregister(struct rt_acq_device *dev);
 
@@ -129,6 +129,15 @@ struct rt_acq_device *rt_acq_find(const char *name);
 
 /* Convenience: broadcast a command to a device (checks ownership for controls). */
 rt_err_t rt_acq_control(struct rt_acq_device *dev, int cmd, void *arg);
+
+/* ===================== Ownership sequence =====================
+ * Aggregators (e.g. DeanAcq) drive a device in this order:
+ *   1. configure while free: SET_RATE / SET_GAIN / ... 
+ *   2. START (continuous acquisition), then SYNC (alignment)
+ *   3. ATTACH(owner): hands the device over; every control command from then
+ *      on is rejected with -RT_EBUSY (reads stay allowed)
+ *   4. DETACH, then STOP: returns control to the caller.
+ * ATTACH before START/SYNC would block them, so keep the order above. */
 
 #ifdef __cplusplus
 }

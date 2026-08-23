@@ -129,7 +129,6 @@ static const struct rt_acq_ops ads128x_acq_ops =
 rt_err_t ads128x_acqdev_register(rt_uint8_t idx)
 {
     struct ads128x_device *ads;
-    char name[RT_NAME_MAX];
     rt_err_t ret;
 
     if (idx >= ADS128X_MAX_DEVICES)
@@ -143,11 +142,11 @@ rt_err_t ads128x_acqdev_register(rt_uint8_t idx)
         return -RT_ERROR;
     }
 
-    rt_snprintf(name, RT_NAME_MAX, "acq%d", idx);
-    ret = rt_acq_device_register(&ads->acq, name, &ads128x_acq_ops, ads);
+    /* The shared class allocates a globally unique name ("acqN"). */
+    ret = rt_acq_device_register(&ads->acq, &ads128x_acq_ops, ads);
     if (ret == RT_EOK)
     {
-        LOG_I("ads128x: registered %s (%s)", name, ads->chip->name);
+        LOG_I("ads128x: registered as %s (%s)", ads->acq.parent.name, ads->chip->name);
     }
     return ret;
 }

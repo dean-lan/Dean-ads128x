@@ -5,19 +5,12 @@ src = []
 path = [cwd]
 
 if GetDepend(['PKG_USING_ADS128X']):
-    # bare driver core (always)
-    src += Glob('src/ads128x_core.c')
-    path += [cwd + '/include', cwd + '/src']
-    # optional RT-Thread ADC device wrapper
-    if GetDepend(['ADS128X_USING_ADC_DEVICE']):
-        src += Glob('src/ads128x_adc.c')
-    # optional standard acquisition-device class (acqN, unified RT_ACQ_CTRL)
+    # ADS128x chip driver files (each guards itself with #if, e.g. ADC_DEVICE/ACQDEV/ACQ)
+    src += Glob('src/ads128x/*.c')
+    path += [cwd + '/include', cwd + '/include/ads128x', cwd + '/src/ads128x']
+    # shared acquisition-device class (acq_device.h/.c)
     if GetDepend(['ADS128X_USING_ACQDEV']):
         src += Glob('src/acq_device.c')
-        src += Glob('src/ads128x_acqdev.c')
-    # optional DeanDAQ acquisition module (multi-chip batch publish)
-    if GetDepend(['ADS128X_USING_ACQ']):
-        src += Glob('src/ads128x_acq.c')
     # sample
     if GetDepend(['ADS128X_SAMPLE']):
         src += Glob('examples/*.c')

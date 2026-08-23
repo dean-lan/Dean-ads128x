@@ -29,6 +29,11 @@ static rt_ssize_t acq_rtdev_read(rt_device_t dev, rt_off_t pos, void *buffer, rt
     struct rt_acq_device *acq = (struct rt_acq_device *)dev;
 
     RT_UNUSED(pos);
+    /* At least timestamp + one channel must fit. */
+    if (buffer == RT_NULL || size < (sizeof(rt_uint64_t) + sizeof(rt_int32_t)))
+    {
+        return 0;
+    }
     if (acq->ops->read_frame == RT_NULL)
     {
         return 0;
@@ -123,8 +128,12 @@ static rt_err_t acq_rtdev_control(rt_device_t dev, int cmd, void *arg)
     }
 }
 
-/* ===================== Registration / lookup ===================== */
-rt_err_t rt_acq_device_register(struct rt_acq_device *dev, const char *name,
+/* ===================== Registration / lookup =====================
+ * Device names are allocated centrally ("acq0", "acq1", ...) so they stay
+ * unique across every chip that registers through this class. */
+static rt_uint8_t acq_reg_count;
+
+rt_err_t rt_acq_device_register(struct rt_acq_device *dev,
                                 const struct rt_acq_ops *ops, void *user_data)
 {
     static const struct rt_device_ops rtdev_ops =
@@ -132,12 +141,14 @@ rt_err_t rt_acq_device_register(struct rt_acq_device *dev, const char *name,
         .read    = acq_rtdev_read,
         .control = acq_rtdev_control,
     };
+    char name[RT_NAME_MAX];
 
-    if (dev == RT_NULL || name == RT_NULL || ops == RT_NULL)
+    if (dev == RT_NULL || ops == RT_NULL)
     {
         return -RT_EINVAL;
     }
 
+    rt_snprintf(name, RT_NAME_MAX, "acq%u", acq_reg_count++);
     dev->ops = ops;
     dev->user_data = user_data;
     dev->owner = RT_NULL;

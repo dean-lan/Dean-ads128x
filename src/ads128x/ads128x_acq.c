@@ -16,6 +16,9 @@
 
 #include <ddaq.h>
 
+#ifndef ADS128X_ACQ_PRIORITY
+#define ADS128X_ACQ_PRIORITY        10
+#endif
 #ifndef ADS128X_ACQ_RING_DEPTH
 #define ADS128X_ACQ_RING_DEPTH      32      /* samples buffered per device in ISR */
 #endif
@@ -161,10 +164,22 @@ rt_err_t ads128x_acq_ctrl(int cmd, void *data)
         return RT_EOK;
 
     case RT_ACQ_CTRL_SYNC:
-        /* Shared SYNC line: one pulse aligns every chip; otherwise per-device. */
-        if (ads128x_dev[0].sync_pin >= 0)
+    {
+        /* Shared SYNC line: one pulse on the first initialized chip that owns a
+         * SYNC pin aligns every chip; otherwise issue per-device SYNC commands. */
+        rt_uint8_t first = 0xFF;
+
+        for (i = 0; i < ADS128X_MAX_DEVICES; i++)
         {
-            return ads128x_sync_hw(&ads128x_dev[0]);
+            if ((acq_dev_mask & (1u << i)) && ads128x_dev[i].sync_pin >= 0)
+            {
+                first = i;
+                break;
+            }
+        }
+        if (first != 0xFF)
+        {
+            return ads128x_sync_hw(&ads128x_dev[first]);
         }
         for (i = 0; i < ADS128X_MAX_DEVICES; i++)
         {
@@ -174,6 +189,7 @@ rt_err_t ads128x_acq_ctrl(int cmd, void *data)
             }
         }
         return RT_EOK;
+    }
 
     case RT_ACQ_CTRL_RESET:
         for (i = 0; i < ADS128X_MAX_DEVICES; i++)
@@ -331,7 +347,7 @@ rt_err_t ads128x_acq_start(rt_uint16_t topic_id, rt_uint16_t batch)
 
     acq_thread = rt_thread_create("adacq", ads128x_acq_entry, RT_NULL,
                                   ADS128X_ACQ_STACK_SIZE,
-                                  RT_THREAD_PRIORITY_MAX / 2, 20);
+                                  ADS128X_ACQ_PRIORITY, 20);
     if (acq_thread == RT_NULL)
     {
         LOG_E("ads128x: acq: create thread failed");

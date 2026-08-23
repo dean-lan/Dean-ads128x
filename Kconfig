@@ -67,6 +67,10 @@ if PKG_USING_ADS128X
             int "Per-device ISR ring depth (samples)"
             default 32
 
+        config ADS128X_ACQ_PRIORITY
+            int "Acquisition thread priority (lower = higher)"
+            default 10
+
         config ADS128X_ACQ_WAIT_TIMEOUT
             int "DRDY gap timeout (ms)"
             default 1000

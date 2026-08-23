@@ -135,7 +135,7 @@ ads128x_adc_register();
 ads128x_device_t dev = ads128x_find();
 ```
 
-### 3.3 Standard Acquisition Device (acqN)
+### 4.3 Standard Acquisition Device (acqN)
 
 With `ADS128X_USING_ACQDEV` enabled, every instance is registered through the
 shared acquisition-device class and driven uniformly via standard rt_device
@@ -171,7 +171,7 @@ operations a chip truly supports (SYNC/RESET/POWER/GAIN/FILTER/STREAM). Chips
 that lack a hardware feature either emulate it in software inside their ops or
 leave the op NULL (the framework returns `-RT_ENOSYS`).
 
-### 3.4 Reading Data (polling)
+### 4.4 Reading Data (polling)
 
 ```c
 ads128x_set_data_rate(dev, 1000);       /* 250/500/1000/2000/4000 SPS */
@@ -187,7 +187,7 @@ ads128x_stop_continuous(dev);
 Polling works well up to 500 SPS. For higher data rates use the interrupt
 approach below.
 
-### 4.4 High-Rate Acquisition (DRDY interrupt)
+### 4.5 High-Rate Acquisition (DRDY interrupt)
 
 The ADS128x has **no internal FIFO**: a single 4-byte data register holds the
 latest conversion, and a new conversion **overwrites** the previous one if it is
@@ -229,7 +229,7 @@ Performance tips:
 - `ads128x_start_continuous()` (RDATAC) keeps CS low and skips the per-sample
   RDATA command, saving SPI overhead.
 
-### 4.5 DeanDAQ Integration
+### 4.6 DeanDAQ Integration
 
 The driver pairs with the [DeanDAQ](https://github.com/dean-lan/DeanDAQ)
 publish/subscribe bus: feed samples from the DRDY-driven acquisition thread into
@@ -255,7 +255,7 @@ void acq_thread_entry(void *param)
 }
 ```
 
-### 4.6 ADC Device Interface
+### 4.7 ADC Device Interface
 
 When `ADS128X_USING_ADC_DEVICE` is enabled and `ads128x_adc_register()` is called,
 the driver is available as an RT-Thread ADC device (device name `adc_ads128x`)
@@ -275,7 +275,7 @@ rt_adc_read(adc, 0);
   a convenience for standard `rt_adc_read()` access.
 - `ADS128X_USING_ADC_DEVICE` is enabled by default; disable it to save RAM/ROM.
 
-### 4.7 File Layout
+### 4.8 File Layout
 
 ```
 DeanAcq-dev/
@@ -295,7 +295,7 @@ DeanAcq-dev/
 └── README.md
 ```
 
-### 4.8 Multi-Chip & DeanDAQ Acquisition
+### 4.9 Multi-Chip & DeanDAQ Acquisition
 
 For multi-chip setups (e.g. several ADS1282s sharing one SPI bus, conversions
 aligned via SYNC), initialize every instance and start the acquisition module:
@@ -351,7 +351,7 @@ static void drdy_shared_isr(void *arg) { ads128x_acq_isr_all(); }
 
 Stop the module with `ads128x_acq_stop()`.
 
-### 4.9 msh Sample
+### 4.10 msh Sample
 
 Enable `ADS128X_SAMPLE` in menuconfig and run:
 
