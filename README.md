@@ -104,6 +104,11 @@ RT-Thread online packages
    the acquisition module, the [DeanDAQ](https://github.com/dean-lan/DeanDAQ)
    package (`PKG_USING_DDAQ`).
 
+   This repository also hosts the shared acquisition-device class
+   (`acq_device.h/.c`) consumed by the [DeanAcq](https://github.com/dean-lan/DeanAcq)
+   aggregator: enable `PKG_USING_ADS128X` (this package) whenever you use
+   DeanAcq, so its `acq_device.h` header is available.
+
 ## 4. Usage
 
 ### 4.1 Hardware Connection
@@ -280,15 +285,17 @@ rt_adc_read(adc, 0);
 ```
 DeanAcq-dev/
 ├── include/
-│   ├── acq_device.h      # Public acquisition-device class (rt_acq_device + ops + commands)
-│   └── ads128x.h         # ADS128x public API (bare driver + wrappers)
+│   ├── acq_device.h          # Public acquisition-device class (shared by every chip)
+│   └── ads128x/
+│       └── ads128x.h         # ADS128x public API (bare driver + wrappers)
 ├── src/
-│   ├── acq_device.c      # Shared class: register/find/read/control dispatch + ownership
-│   ├── ads128x_internal.h  # Internal: device struct, register/command defines, chip table
-│   ├── ads128x_core.c      # Bare driver core (SPI access, config, control, data read)
-│   ├── ads128x_acqdev.c    # Acquisition-class binding (implements rt_acq_ops)
-│   ├── ads128x_adc.c       # Optional RT-Thread ADC device wrapper
-│   └── ads128x_acq.c       # Optional multi-chip front-end (ISR rings + batch publish + group ctrl)
+│   ├── acq_device.c          # Shared class: register/find/read/control dispatch + ownership
+│   └── ads128x/
+│       ├── ads128x_internal.h  # Internal: device struct, register/command defines, chip table
+│       ├── ads128x_core.c      # Bare driver core (SPI access, config, control, data read)
+│       ├── ads128x_acqdev.c    # Acquisition-class binding (implements rt_acq_ops)
+│       ├── ads128x_adc.c       # Optional RT-Thread ADC device wrapper
+│       └── ads128x_acq.c       # Optional multi-chip front-end (ISR rings + batch + group ctrl)
 ├── Kconfig
 ├── SConscript
 ├── examples/ads128x_sample.c
